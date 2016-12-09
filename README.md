@@ -1,4 +1,5 @@
 # Git Tutorial
 
-feature-A なう
+- feature-A 
 - fix B
+- feature-C なう
