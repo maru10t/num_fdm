@@ -1,5 +1,4 @@
-# Git Tutorial
+# About num_fdm
+有限差分法での数値計算プログラムたち
 
-- feature-A 
-- fix B
-- feature-C なう
+- **incomp** は非圧縮性流体
