@@ -5,24 +5,15 @@ import Data.Array.Repa as R
 import System.IO
 import Debug.Trace
 import Text.Printf
-import Control.Monad.State
 
 type Field t = Array t DIM1 Double
 type Field2D t = Array t DIM2 Double
-
-type Sf a = State (StreamFunc, Vorticity) a
-
-type StreamFunc = Field2D D
-type Vorticity  = Field2D D
 
 nx = 20 :: Int
 ny = 20 :: Int
 dx = 1.0 / (fromIntegral nx) :: Double
 dy = 1.0 / (fromIntegral ny) :: Double
 dt = 2.0 / 1000 :: Double
-
-zeros_2d :: Field2D D
-zeros_2d = fromFunction (Z:.nx:.ny) (\_ -> 0.0)
 
 stepField :: Int -> Field U -> (Field U -> Field D) -> IO (Field U)
 stepField n u step = do
@@ -92,46 +83,6 @@ step02D u = fromFunction (Z:.nx:.ny) (\(Z:.i:.j) -> 1/4 * (a(i+1,j) + a(i-1,j) +
           | isOut(i,j) = 0.0
           | otherwise  = u!(Z:.i:.j)
 
--- apply Boundary condtions
-appBdCond_om :: Sf ()
-appBdCond_om = state (\(psi, om) -> 
-    let om' = fromFunction (Z:.nx:.ny) f
-        h = dx
-        f (Z:.i:.j)
-          | i==0        = -2*psi!(Z:.(i+1):.j)/(h**2)
-          | i==(nx-1)   = -2*psi!(Z:.(i-1):.j)/(h**2)
-          | j==0        = -2*psi!(Z:.i:.(j+1))/(h**2)
-          | j==(ny-1)   = -2*(psi!(Z:.i:.(j-1)) + h)/(h**2)
-          | otherwise   = om!(Z:.i:.j)
-    in ((), (psi,om')))
-
-step_om :: Sf ()
-step_om = state (\(psi,om) ->
-  let om' = fromFunction (Z:.nx:.ny) f
-      h = dx
-      re = 10
-      o(i,j) = om!(Z:.i:.j)
-      p(i,j) = psi!(Z:.i:.j)
-      f (Z:.i:.j)
-        | isBound(i,j)  = o(i,j)
-        | otherwise     = 1/4*(o(i+1,j)+o(i-1,j)+o(i,j+1)+o(i,j-1)) - re/16 * ((p(i,j+1)-p(i,j-1))*(o(i+1,j)-o(i-1,j)) - (p(i+1,j)-p(i-1,j))*(o(i,j+1)-o(i,j-1)))
-    in ((), (psi,om')))
-
-step_psi :: Sf ()
-step_psi = state (\(psi,om) ->
-  let psi' = fromFunction (Z:.nx:.ny) f
-      h = dx
-      re = 10
-      o(i,j) = om!(Z:.i:.j)
-      p(i,j) = psi!(Z:.i:.j)
-      f (Z:.i:.j)
-        | isBound(i,j)  = p(i,j)
-        | otherwise     = h**2/4 * o(i,j) + 1/4 * (p(i+1,j)+p(i-1,j)+p(i,j+1)+p(i,j-1))
-    in ((), (psi',om)))
-
-init_st :: Sf ()
-init_st = state (\_ -> ((), (zeros_2d, zeros_2d)))
-
 isBound :: (Int,Int) -> Bool
 isBound (i,j) = (i==0)||(j==0)||(i==(nx-1))||(j==(ny-1))
 
@@ -145,6 +96,18 @@ bcond11 u = fromFunction (Z:.nx:.ny) f
                         | isBound(i,j)  = (fromIntegral j) * dy
                         | otherwise     = u!(Z:.i:.j)
 
+bcond12 :: Field2D D -> Field2D D
+bcond12 u = fromFunction (Z:.nx:.ny) f
+                where f (Z:.i:.j)
+                        | isBound(i,j)  = -(fromIntegral i) * dx
+                        | otherwise     = u!(Z:.i:.j)
+
+bcond13 :: Field2D D -> Field2D D
+bcond13 u = fromFunction (Z:.nx:.ny) f
+                where f (Z:.i:.j)
+                        | isBound(i,j)  = 1.0
+                        | otherwise     = u!(Z:.i:.j)
+
 initCond12D :: Field2D U
 initCond12D = computeS $ fromFunction (Z:.nx:.ny) (\(Z:.i:.j) -> 0.0)
 
@@ -153,4 +116,10 @@ liftD2U f = computeS.f.delay
 
 main :: IO ()
 main = do
+  u1 <- stepField2D 100 (liftD2U bcond11 $initCond12D) (bcond11.step02D)
+  writeField "data/cond11.txt" u1
+  u2 <- stepField2D 100 (liftD2U bcond12 $initCond12D) (bcond12.step02D)
+  writeField "data/cond12.txt" u2
+  u3 <- stepField2D 100 (liftD2U bcond13 $initCond12D) (bcond13.step02D)
+  writeField "data/cond13.txt" u3
   return ()
